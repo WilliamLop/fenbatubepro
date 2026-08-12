@@ -10,7 +10,8 @@ from app.services.download_proxy import MediaProxyService
 class ExtractorEngine:
     """
     Motor de extracción optimizado que combina SSSTik para TikTok (100% HD sin marca de agua)
-    yt-dlp para Instagram, y proxy en Base64 para evitar truncamientos de URL.
+    yt-dlp para Instagram (con filtrado estricto de streams progresivos H.264/AAC compatibles con QuickTime),
+    y proxy en Base64 para evitar truncamientos de URL.
     """
 
     @staticmethod
@@ -20,7 +21,7 @@ class ExtractorEngine:
             'no_warnings': True,
             'extract_flat': False,
             'skip_download': True,
-            'format': 'best[ext=mp4]/b[ext=mp4]/best',
+            'format': 'best[ext=mp4][vcodec^=avc1][acodec!=none]/best[ext=mp4]/best',
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -79,7 +80,7 @@ class ExtractorEngine:
                     formats=formats
                 )
 
-        # Step 3: Extracción para Instagram usando yt-dlp
+        # Step 3: Extracción para Instagram usando yt-dlp con filtrado garantizado de video + audio H.264
         info = None
         try:
             loop = asyncio.get_event_loop()
@@ -93,18 +94,25 @@ class ExtractorEngine:
                 detail="No se pudo procesar el contenido de Instagram. Verifica que la publicación no sea privada."
             )
 
-        # Buscar el mejor formato MP4 con video + audio progresivo
-        direct_url = info.get("url")
-        if not direct_url and "formats" in info:
+        # Buscar explícitamente el mejor formato MP4 progresivo que contenga VIDEO + AUDIO multiplexados
+        direct_url = None
+        if "formats" in info:
             for fmt in reversed(info["formats"]):
-                if fmt.get("url") and fmt.get("vcodec") != "none" and fmt.get("acodec") != "none":
+                # Filtrar formatos que tengan tanto pista de video como de audio activas
+                has_video = fmt.get("vcodec") and fmt.get("vcodec") != "none"
+                has_audio = fmt.get("acodec") and fmt.get("acodec") != "none"
+                is_mp4 = fmt.get("ext") == "mp4" or "mp4" in fmt.get("format_id", "").lower()
+                
+                if fmt.get("url") and has_video and has_audio and is_mp4:
                     direct_url = fmt["url"]
                     break
-            if not direct_url and len(info["formats"]) > 0:
-                direct_url = info["formats"][-1].get("url")
+
+        # Fallback a la URL principal si no se encontró en la lista de formatos
+        if not direct_url:
+            direct_url = info.get("url")
 
         if not direct_url:
-            raise HTTPException(status_code=500, detail="No se encontraron enlaces directos de video.")
+            raise HTTPException(status_code=500, detail="No se encontraron enlaces directos de video reproducibles.")
 
         encoded_direct = MediaProxyService.encode_target(direct_url)
         media_id = str(info.get("id", "video"))
