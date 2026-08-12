@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { VideoExtractResponse, MediaFormatOption } from '@/lib/api';
+import { VideoExtractResponse, MediaFormatOption, BACKEND_API_URL } from '@/lib/api';
 import { Download, Film, Music, Check, Sparkles, Clock, User } from 'lucide-react';
 
 interface MediaPreviewCardProps {
@@ -14,8 +14,20 @@ export const MediaPreviewCard: React.FC<MediaPreviewCardProps> = ({ data }) => {
 
   const handleDownload = () => {
     setIsDownloading(true);
-    // Abrir URL de descarga en nueva pestaña o iniciar descarga direct stream
-    window.open(selectedFormat.download_url, '_blank');
+
+    // Construir la URL completa apuntando a nuestro Proxy de descarga en el backend
+    const downloadUrl = selectedFormat.download_url.startsWith('http')
+      ? selectedFormat.download_url
+      : `${BACKEND_API_URL}${selectedFormat.download_url}`;
+
+    // Disparar la descarga directa nativa del navegador sin abrir pestañas emergentes
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `${data.platform}_${data.id}.${selectedFormat.extension}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
     setTimeout(() => setIsDownloading(false), 2000);
   };
 
@@ -85,7 +97,9 @@ export const MediaPreviewCard: React.FC<MediaPreviewCardProps> = ({ data }) => {
                       )}
                       <div>
                         <div className="text-xs font-bold">{fmt.quality_label}</div>
-                        <div className="text-[10px] text-slate-400 uppercase">{fmt.extension} {fmt.has_watermark ? '(Con Marca)' : '(No-Watermark)'}</div>
+                        <div className="text-[10px] text-slate-400 uppercase">
+                          {fmt.extension} {fmt.has_watermark ? '(Con Marca)' : '(Sin Marca)'}
+                        </div>
                       </div>
                     </div>
                     {isSelected && <Check className="w-4 h-4 text-cyan-400" />}
@@ -99,7 +113,7 @@ export const MediaPreviewCard: React.FC<MediaPreviewCardProps> = ({ data }) => {
           <button
             onClick={handleDownload}
             disabled={isDownloading}
-            className="w-full glow-button py-3.5 px-6 rounded-xl text-slate-950 font-extrabold text-base flex items-center justify-center space-x-2 shadow-xl"
+            className="w-full glow-button py-3.5 px-6 rounded-xl text-slate-950 font-extrabold text-base flex items-center justify-center space-x-2 shadow-xl cursor-pointer"
           >
             <Download className="w-5 h-5" />
             <span>{isDownloading ? 'Iniciando descarga...' : `Descargar ${selectedFormat.quality_label}`}</span>

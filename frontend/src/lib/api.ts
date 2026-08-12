@@ -18,7 +18,7 @@ export interface VideoExtractResponse {
   formats: MediaFormatOption[];
 }
 
-const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export async function extractMediaInfo(url: string): Promise<VideoExtractResponse> {
   const response = await fetch(`${BACKEND_API_URL}/api/v1/extract`, {
