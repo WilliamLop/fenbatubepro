@@ -56,10 +56,10 @@ export default function Home() {
         {/* Input Formulario */}
         <UrlForm onSubmit={handleExtract} isLoading={loading} error={error} />
 
-        {/* Vista previa de Metadatos */}
+        {/* Vista previa de Metadatos con key única para forzar re-montaje limpio del componente */}
         {mediaData && (
           <div className="w-full">
-            <MediaPreviewCard data={mediaData} />
+            <MediaPreviewCard key={mediaData.id} data={mediaData} />
             <div className="text-center mt-4">
               <button
                 onClick={() => setMediaData(null)}

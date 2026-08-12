@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { VideoExtractResponse, MediaFormatOption, BACKEND_API_URL } from '@/lib/api';
 import { Download, Film, Music, Check, Sparkles, Clock, User } from 'lucide-react';
 
@@ -12,7 +12,15 @@ export const MediaPreviewCard: React.FC<MediaPreviewCardProps> = ({ data }) => {
   const [selectedFormat, setSelectedFormat] = useState<MediaFormatOption>(data.formats[0]);
   const [isDownloading, setIsDownloading] = useState(false);
 
+  // Sincronizar el estado de formato cuando cambia el objeto data del video
+  useEffect(() => {
+    if (data?.formats?.length) {
+      setSelectedFormat(data.formats[0]);
+    }
+  }, [data]);
+
   const handleDownload = () => {
+    if (!selectedFormat) return;
     setIsDownloading(true);
 
     // Construir la URL completa apuntando a nuestro Proxy de descarga en el backend
@@ -78,7 +86,7 @@ export const MediaPreviewCard: React.FC<MediaPreviewCardProps> = ({ data }) => {
             </span>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {data.formats.map((fmt) => {
-                const isSelected = selectedFormat.format_id === fmt.format_id;
+                const isSelected = selectedFormat?.format_id === fmt.format_id;
                 return (
                   <button
                     key={fmt.format_id}
@@ -112,11 +120,11 @@ export const MediaPreviewCard: React.FC<MediaPreviewCardProps> = ({ data }) => {
           {/* Botón Acción Descargar */}
           <button
             onClick={handleDownload}
-            disabled={isDownloading}
+            disabled={isDownloading || !selectedFormat}
             className="w-full glow-button py-3.5 px-6 rounded-xl text-slate-950 font-extrabold text-base flex items-center justify-center space-x-2 shadow-xl cursor-pointer"
           >
             <Download className="w-5 h-5" />
-            <span>{isDownloading ? 'Iniciando descarga...' : `Descargar ${selectedFormat.quality_label}`}</span>
+            <span>{isDownloading ? 'Iniciando descarga...' : `Descargar ${selectedFormat?.quality_label || ''}`}</span>
             <Sparkles className="w-4 h-4 ml-1" />
           </button>
         </div>
