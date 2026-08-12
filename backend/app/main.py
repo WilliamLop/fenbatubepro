@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.endpoints.extract import router as extract_router
 
+# FastAPI application instance for Media Downloader API
 app = FastAPI(
     title="Media Downloader API",
     description="API de extracción de contenidos en Alta Calidad para Instagram y TikTok",
