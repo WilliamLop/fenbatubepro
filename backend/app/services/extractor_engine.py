@@ -1,21 +1,20 @@
 import asyncio
 import yt_dlp
-from typing import Dict, Any, List
-from urllib.parse import quote
+from typing import Dict, Any
 from fastapi import HTTPException
 from app.schemas.media import VideoExtractResponse, MediaFormatOption
 from app.services.validators import validate_media_url, resolve_url_redirects
 from app.services.tiktok_fallback import TikTokFallbackScraper
+from app.services.download_proxy import MediaProxyService
 
 class ExtractorEngine:
     """
-    Motor de extracción optimizado para entregar streams MP4 progresivos (Video + Audio combinados H.264/AAC),
-    garantizando reproducibilidad 100% en QuickTime Player y fallbacks resilientes para TikTok e Instagram.
+    Motor de extracción optimizado que combina SSSTik para TikTok (100% HD sin marca de agua)
+    yt-dlp para Instagram, y proxy en Base64 para evitar truncamientos de URL.
     """
 
     @staticmethod
     def _extract_sync_ytdlp(url: str) -> Dict[str, Any]:
-        # Formato optimizado: Prioriza streams MP4 progresivos únicos (video + audio en un solo archivo)
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
@@ -30,8 +29,9 @@ class ExtractorEngine:
 
     @classmethod
     async def extract_media(cls, raw_url: str) -> VideoExtractResponse:
-        # Step 1: Resolver redirecciones de URLs cortas (vt.tiktok.com, vm.tiktok.com, ig.me)
-        canonical_url = await resolve_url_redirects(raw_url)
+        # Step 1: Limpiar parámetros de tracking (?_r=1&_t=...) y resolver redirecciones (vt.tiktok.com)
+        clean_input = raw_url.split("?")[0].strip()
+        canonical_url = await resolve_url_redirects(clean_input)
         is_valid, platform = validate_media_url(canonical_url)
 
         if not is_valid or not platform:
@@ -40,30 +40,31 @@ class ExtractorEngine:
                 detail="La URL proporcionada no pertenece a una publicación válida de Instagram o TikTok."
             )
 
-        # Para TikTok, intentar PRIMERO el scraper directo de TikWM para obtener video HD sin marca de agua inmediato
+        # Step 2: Para TikTok, usar SSSTik / TikCDN como motor primario (garantiza HD 1080p sin marca)
         if platform == "tiktok":
             fallback_data = await TikTokFallbackScraper.extract(canonical_url)
             if fallback_data and fallback_data.get("hd_url"):
-                encoded_hd = quote(fallback_data["hd_url"], safe="")
-                encoded_music = quote(fallback_data["music_url"], safe="") if fallback_data.get("music_url") else ""
-
+                encoded_hd = MediaProxyService.encode_target(fallback_data["hd_url"])
+                
                 formats = [
                     MediaFormatOption(
                         format_id="hd_no_watermark",
                         quality_label="HD Sin Marca de Agua (1080p)",
                         extension="mp4",
                         has_watermark=False,
-                        download_url=f"/api/v1/download?url={encoded_hd}&filename=tiktok_{fallback_data['id']}_hd.mp4"
+                        download_url=f"/api/v1/download?target={encoded_hd}&filename=tiktok_{fallback_data['id']}_hd.mp4"
                     )
                 ]
-                if encoded_music:
+
+                if fallback_data.get("audio_url"):
+                    encoded_audio = MediaProxyService.encode_target(fallback_data["audio_url"])
                     formats.append(
                         MediaFormatOption(
                             format_id="audio_mp3",
                             quality_label="Solo Audio (MP3)",
                             extension="mp3",
                             has_watermark=False,
-                            download_url=f"/api/v1/download?url={encoded_music}&filename=tiktok_{fallback_data['id']}_audio.mp3"
+                            download_url=f"/api/v1/download?target={encoded_audio}&filename=tiktok_{fallback_data['id']}_audio.mp3"
                         )
                     )
 
@@ -78,7 +79,7 @@ class ExtractorEngine:
                     formats=formats
                 )
 
-        # Step 2: Extracción primaria con yt-dlp (especialmente para Instagram)
+        # Step 3: Extracción para Instagram usando yt-dlp
         info = None
         try:
             loop = asyncio.get_event_loop()
@@ -89,13 +90,12 @@ class ExtractorEngine:
         if not info:
             raise HTTPException(
                 status_code=500,
-                detail="No se pudo procesar el contenido. Verifica la conexión a internet o que la publicación no sea privada."
+                detail="No se pudo procesar el contenido de Instagram. Verifica que la publicación no sea privada."
             )
 
-        # Obtener enlace de video directo combinando pistas progresivas
+        # Buscar el mejor formato MP4 con video + audio progresivo
         direct_url = info.get("url")
         if not direct_url and "formats" in info:
-            # Buscar el mejor formato MP4 que contenga video y audio
             for fmt in reversed(info["formats"]):
                 if fmt.get("url") and fmt.get("vcodec") != "none" and fmt.get("acodec") != "none":
                     direct_url = fmt["url"]
@@ -104,9 +104,9 @@ class ExtractorEngine:
                 direct_url = info["formats"][-1].get("url")
 
         if not direct_url:
-            raise HTTPException(status_code=500, detail="No se encontraron enlaces directos de video reproducibles.")
+            raise HTTPException(status_code=500, detail="No se encontraron enlaces directos de video.")
 
-        encoded_direct = quote(direct_url, safe="")
+        encoded_direct = MediaProxyService.encode_target(direct_url)
         media_id = str(info.get("id", "video"))
 
         formats = [
@@ -116,7 +116,7 @@ class ExtractorEngine:
                 extension="mp4",
                 has_watermark=False,
                 filesize_approx_mb=round(info.get("filesize_approx", 0) / (1024 * 1024), 2) if info.get("filesize_approx") else None,
-                download_url=f"/api/v1/download?url={encoded_direct}&filename={platform}_{media_id}.mp4"
+                download_url=f"/api/v1/download?target={encoded_direct}&filename={platform}_{media_id}.mp4"
             )
         ]
 

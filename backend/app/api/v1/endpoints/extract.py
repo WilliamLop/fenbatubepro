@@ -17,11 +17,11 @@ async def extract_video_info(payload: VideoExtractRequest):
 
 @router.get("/download")
 async def download_media(
-    url: str = Query(..., description="URL directa cifrada o codificada del medio"),
+    target: str = Query(..., description="String Base64 de la URL objetivo de descarga"),
     filename: str = Query("video.mp4", description="Nombre del archivo final de salida")
 ):
     """
-    Proxy Streamer que retransmite el contenido agregando las cabeceras requeridas (Referer/User-Agent),
+    Proxy Streamer que retransmite el contenido en Base64 agregando las cabeceras requeridas,
     garantizando descargas directas en .mp4 100% compatibles con QuickTime Player.
     """
-    return await MediaProxyService.stream_media(target_url=url, filename=filename)
+    return await MediaProxyService.stream_media(target_encoded=target, filename=filename)
