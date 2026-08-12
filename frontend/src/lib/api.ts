@@ -18,7 +18,7 @@ export interface VideoExtractResponse {
   formats: MediaFormatOption[];
 }
 
-// URL oficial del nuevo backend en Render para fenbatubepro
+// URL oficial verificada del backend en Render para fenbatubepro
 export const BACKEND_API_URL =
   process.env.NEXT_PUBLIC_API_URL || 'https://fenbatubepro-api.onrender.com';
 
