@@ -5,10 +5,9 @@ from fastapi.responses import StreamingResponse
 
 class MediaProxyService:
     """
-    Servidor Proxy de Streaming que retransmite el video/audio desde los CDNs
-    de Instagram y TikTok aplicando las cabeceras requeridas (Referer, User-Agent),
-    garantizando que el archivo descargado sea un .mp4 100% válido y compatible
-    con QuickTime Player en macOS/Windows.
+    Servidor Proxy de Streaming que valida la conexión ANTES de iniciar StreamingResponse,
+    evitando el error 'RuntimeError: Caught handled exception, but response already started'
+    y garantizando descargas completas de archivos MP4 compatibles con QuickTime.
     """
 
     @classmethod
@@ -16,7 +15,6 @@ class MediaProxyService:
         if not target_url:
             raise HTTPException(status_code=400, detail="URL de destino vacía.")
 
-        # Determinar cabeceras de origen seguras
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "*/*",
@@ -28,24 +26,52 @@ class MediaProxyService:
         elif "tiktok" in target_url or "tikwm" in target_url:
             headers["Referer"] = "https://www.tiktok.com/"
 
-        async def file_generator():
-            async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
-                async with client.stream("GET", target_url, headers=headers) as response:
-                    if response.status_code not in (200, 206):
-                        raise HTTPException(
-                            status_code=response.status_code,
-                            detail="No se pudo obtener el archivo desde el servidor de origen."
-                        )
-                    async for chunk in response.aiter_bytes(chunk_size=1024 * 64):
-                        yield chunk
+        client = httpx.AsyncClient(follow_redirects=True, timeout=30.0)
+        
+        try:
+            # 1. Abrir la conexión y validar el estado ANTES de enviar respuesta HTTP
+            req = client.build_request("GET", target_url, headers=headers)
+            res = await client.send(req, stream=True)
 
-        safe_filename = quote(filename)
-        return StreamingResponse(
-            file_generator(),
-            media_type="video/mp4" if filename.endswith(".mp4") else "audio/mpeg",
-            headers={
+            if res.status_code not in (200, 206):
+                await res.aclose()
+                await client.aclose()
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"El servidor de origen del video devolvió un error ({res.status_code}). Intenta de nuevo."
+                )
+
+            # 2. Generador asíncrono para retransmitir chunks al cliente
+            async def file_generator():
+                try:
+                    async for chunk in res.aiter_bytes(chunk_size=1024 * 64):
+                        yield chunk
+                finally:
+                    await res.aclose()
+                    await client.aclose()
+
+            safe_filename = quote(filename)
+            content_length = res.headers.get("content-length")
+            
+            response_headers = {
                 "Content-Disposition": f'attachment; filename="{filename}"; filename*=UTF-8\'\'{safe_filename}',
-                "Access-Control-Expose-Headers": "Content-Disposition",
+                "Access-Control-Expose-Headers": "Content-Disposition, Content-Length",
                 "Cache-Control": "no-cache",
             }
-        )
+            if content_length:
+                response_headers["Content-Length"] = content_length
+
+            return StreamingResponse(
+                file_generator(),
+                media_type="video/mp4" if filename.endswith(".mp4") else "audio/mpeg",
+                headers=response_headers
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            await client.aclose()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error al establecer conexión con el stream de origen: {str(e)}"
+            )
