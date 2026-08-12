@@ -19,6 +19,15 @@ app.add_middleware(
 
 app.include_router(extract_router, prefix="/api/v1", tags=["Extraction"])
 
+@app.get("/")
+def root():
+    return {
+        "status": "online",
+        "message": "Media Downloader API is running smoothly",
+        "docs": "/docs",
+        "health": "/healthcheck"
+    }
+
 @app.get("/healthcheck")
 def healthcheck():
     return {"status": "ok", "service": "Media Downloader API"}
