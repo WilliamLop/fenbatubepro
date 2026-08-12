@@ -18,9 +18,9 @@ export interface VideoExtractResponse {
   formats: MediaFormatOption[];
 }
 
-// URL directa del backend en Render recién desplegado y verificado
+// URL oficial del nuevo backend en Render para fenbatubepro
 export const BACKEND_API_URL =
-  process.env.NEXT_PUBLIC_API_URL || 'https://media-downloader-backend-1zll.onrender.com';
+  process.env.NEXT_PUBLIC_API_URL || 'https://fenbatubepro-api.onrender.com';
 
 export async function extractMediaInfo(url: string): Promise<VideoExtractResponse> {
   const response = await fetch(`${BACKEND_API_URL}/api/v1/extract`, {
