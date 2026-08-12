@@ -18,9 +18,9 @@ export interface VideoExtractResponse {
   formats: MediaFormatOption[];
 }
 
-// URL por defecto directa de Render para producción si no hay variable de entorno en Vercel
+// URL directa del backend en Render recién desplegado y verificado
 export const BACKEND_API_URL =
-  process.env.NEXT_PUBLIC_API_URL || 'https://media-downloader-api-dos0.onrender.com';
+  process.env.NEXT_PUBLIC_API_URL || 'https://media-downloader-backend-1zll.onrender.com';
 
 export async function extractMediaInfo(url: string): Promise<VideoExtractResponse> {
   const response = await fetch(`${BACKEND_API_URL}/api/v1/extract`, {
